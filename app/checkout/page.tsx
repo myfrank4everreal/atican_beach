@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { CreditCard, Loader2, AlertCircle } from 'lucide-react'
+import { CreditCard, Loader2, AlertCircle, Info, CheckCircle } from 'lucide-react'
 import { useCartStore } from '@/stores/cartStore'
 
 export default function CheckoutPage() {
@@ -19,8 +19,37 @@ export default function CheckoutPage() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [paystackConfigured, setPaystackConfigured] = useState<boolean | null>(null)
+  const [bookingSuccess, setBookingSuccess] = useState<string | null>(null)
 
   const total = getTotal()
+
+  // Check if Paystack is configured on mount
+  useEffect(() => {
+    const checkPaystackConfig = async () => {
+      try {
+        const res = await fetch('/api/paystack/initialize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'test@test.com',
+            amount: 100,
+            bookingReference: 'test',
+          }),
+        })
+        const data = await res.json()
+        // If we get a specific error code, Paystack is not configured
+        if (data.code === 'PAYSTACK_NOT_CONFIGURED') {
+          setPaystackConfigured(false)
+        } else {
+          setPaystackConfigured(true)
+        }
+      } catch {
+        setPaystackConfigured(false)
+      }
+    }
+    checkPaystackConfig()
+  }, [])
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -34,6 +63,7 @@ export default function CheckoutPage() {
     setError(null)
 
     try {
+      // Create booking first
       const bookingRes = await fetch('/api/bookings/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,6 +92,14 @@ export default function CheckoutPage() {
         throw new Error(bookingData.error || 'Failed to create booking')
       }
 
+      // If Paystack is not configured, show success message
+      if (paystackConfigured === false) {
+        setBookingSuccess(bookingData.booking.reference)
+        setLoading(false)
+        return
+      }
+
+      // Initialize Paystack payment
       const paystackRes = await fetch('/api/paystack/initialize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -102,6 +140,36 @@ export default function CheckoutPage() {
     )
   }
 
+  // Show booking success message
+  if (bookingSuccess) {
+    return (
+      <div className="min-h-screen bg-[#F5F1E8] py-12 flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center"
+        >
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="w-10 h-10 text-green-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-[#082032] mb-2">Booking Created!</h1>
+          <p className="text-gray-600 mb-4">
+            Your booking reference is: <strong>{bookingSuccess}</strong>
+          </p>
+          <p className="text-gray-500 text-sm mb-6">
+            Our team will contact you shortly to arrange payment. Please keep your booking reference for reference.
+          </p>
+          <button
+            onClick={() => router.push('/')}
+            className="bg-[#0A3D62] text-white px-6 py-3 rounded-lg hover:bg-[#08324f] transition-colors"
+          >
+            Return to Home
+          </button>
+        </motion.div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-[#F5F1E8] py-12">
       <div className="max-w-4xl mx-auto px-4">
@@ -138,6 +206,21 @@ export default function CheckoutPage() {
               </div>
             </div>
 
+            {/* Payment Status Notice */}
+            {paystackConfigured === false && (
+              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-amber-800 font-medium">Payment System Not Configured</p>
+                    <p className="text-amber-700 text-sm mt-1">
+                      Online payments are currently unavailable. Please complete your booking and our team will contact you for alternative payment arrangements.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-6">
               <h2 className="text-lg font-semibold text-[#082032]">Guest Details</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -172,11 +255,17 @@ export default function CheckoutPage() {
               )}
 
               <button type="submit" disabled={loading}
-                className="w-full bg-[#0A3D62] text-white py-4 rounded-lg font-semibold text-lg hover:bg-[#08324f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                {loading ? (<><Loader2 className="w-5 h-5 animate-spin" />Processing...</>) : (<><CreditCard className="w-5 h-5" />Pay ₦{total.toLocaleString()} with Paystack</>)}
+                className="w-full bg-[#0A3D62] text-white py-4 rounded-lg font-semibold text-lg hover:bg-[#08324f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {loading ? (<><Loader2 className="w-5 h-5 animate-spin" />Processing...</>) : paystackConfigured === false ? (<><Info className="w-5 h-5" />Complete Booking (Payment Offline)</>) : (<><CreditCard className="w-5 h-5" />Pay ₦{total.toLocaleString()} with Paystack</>)}
               </button>
 
-              <p className="text-center text-sm text-gray-500">Secure payment powered by Paystack. You will be redirected to complete payment.</p>
+              <p className="text-center text-sm text-gray-500">
+                {paystackConfigured === false 
+                  ? 'Your booking will be created. Our team will contact you for payment arrangements.'
+                  : 'Secure payment powered by Paystack. You will be redirected to complete payment.'
+                }
+              </p>
             </form>
           </div>
         </motion.div>

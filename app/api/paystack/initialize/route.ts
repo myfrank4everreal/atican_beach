@@ -19,6 +19,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check if Paystack is configured
+    const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY
+    const NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY
+
+    if (!PAYSTACK_SECRET_KEY || !NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY) {
+      return NextResponse.json(
+        { 
+          error: 'Payment system not configured. Please contact the administrator.',
+          code: 'PAYSTACK_NOT_CONFIGURED' 
+        },
+        { status: 503 }
+      )
+    }
+
     const supabase = await createServerSupabaseClient()
 
     const { data: booking, error: bookingError } = await supabase

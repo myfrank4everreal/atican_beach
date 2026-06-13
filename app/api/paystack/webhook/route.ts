@@ -4,9 +4,21 @@ import crypto from 'crypto'
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if Paystack is configured
+    const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY
+
+    if (!PAYSTACK_SECRET_KEY) {
+      console.warn('⚠️ Paystack webhook received but PAYSTACK_SECRET_KEY is not configured')
+      // Still return success to avoid webhook retries, but log the issue
+      return NextResponse.json({ 
+        success: true, 
+        message: 'Paystack not configured - webhook ignored' 
+      })
+    }
+
     const body = await request.text()
     const hash = crypto
-      .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY!)
+      .createHmac('sha512', PAYSTACK_SECRET_KEY)
       .update(body)
       .digest('hex')
 

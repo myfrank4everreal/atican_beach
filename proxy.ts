@@ -1,6 +1,14 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Check Supabase environment variables early
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+if (!supabaseUrl || !supabaseKey) {
+  console.warn('⚠️ Supabase not configured - admin routes will not be protected')
+}
+
 // Wrap a promise with a timeout to prevent hanging on network issues
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -64,10 +72,16 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
+  // If Supabase is not configured, allow access to admin routes (for development)
+  if (!supabaseUrl || !supabaseKey) {
+    console.warn('⚠️ Supabase not configured - allowing access to protected route:', pathname)
+    return response
+  }
+
   // Auth protection for admin and dashboard routes
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseKey,
     {
       cookies: {
         get(name: string) {
